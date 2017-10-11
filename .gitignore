@@ -1,3 +1,5 @@
 *.swp
 .ipynb_checkpoints/
 .env/
+*.DS_Store
+torch-hdf5/
