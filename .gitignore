@@ -3,3 +3,5 @@
 .env/
 *.DS_Store
 torch-hdf5/
+*.pyc
+__pycache__/
