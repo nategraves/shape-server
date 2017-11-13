@@ -3,13 +3,22 @@ from __future__ import division, print_function
 
 import re
 import subprocess
+import threading
+
 from flask import Flask, jsonify
 from svgpathtools import parse_path, Path
 
 app = Flask(__name__.split('.')[0]) # pylint: disable=invalid-name
 
-def generate(max_size = 500):
+def get_all_paths():
+    with open('shapes.txt', 'r') as f:
+        paths = [line.rstrip() for line in f.readlines()]
+        paths = list(reversed(paths))
+        return paths
+
+def generate(min_size=2, max_size = 500):
     """ Returns an SVG path as a string """
+    print("Generating....")
     forever = True
     while forever:
         final_path = None
@@ -28,7 +37,7 @@ def generate(max_size = 500):
                     height = ymax - ymin
                     print(height)
                     print("**********************************")
-                    if width > 1 and width < max_size and height > 1 and height < max_size:
+                    if width > min_size and width < max_size and height > min_size and height < max_size:
                         final_path = p.d()
                         break
 
@@ -38,16 +47,27 @@ def generate(max_size = 500):
                 f.write(path + '\n')
                 forever = False
                 break
+    print("Finished generating..." + final_path)
+    threading.Timer(60 * 10, generate).start()
     return final_path
 
 
+@app.route('/generate')
+def new_path():
+    generate()
+    paths = get_all_paths()
+    response = jsonify({ 'paths': paths })
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
+
 @app.route('/')
 def index():
-    with open('shapes.txt', 'r') as f:
-        paths = [line.rstrip() for line in f.readlines()]
-        response = jsonify({ 'paths': paths })
-        response.headers.add('Access-Control-Allow-Origin', '*')
-        return response
+    max_per_page = 6
+    paths = get_all_paths()
+    response = jsonify({ 'paths': paths[0:max_per_page] })
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 if __name__ == '__main__':
+    threading.Timer(60 * 10, generate).start()
     app.run(debug=True)
