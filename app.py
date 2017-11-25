@@ -16,16 +16,18 @@ def get_all_paths():
         paths = list(reversed(paths))
         return paths
 
-def generate(min_size=2, max_size = 500):
+def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
     """ Returns an SVG path as a string """
-    print("Generating....")
-    forever = True
-    while forever:
+    versions = ['cv/paths_60000.t7', 'cv/paths1116_195000.t7', 'cv/paths1120_50000.t7', 'cv/paths_1124_33000.t7']
+    if repeat:
+        threading.Timer(60.0, generate).start()
+    while True:
         final_path = None
         while final_path is None:
-            generate_path = ('th sample.lua -checkpoint cv/paths_60000.t7 -length 3500 '
-                '-start_text M -sample 1 -temperature 0.5').split()
-            nn_output = subprocess.check_output(generate_path).decode('utf-8')
+            print("Generating....")
+            generate_path = "th sample.lua -checkpoint %s -length 1000 -start_text M -sample 1 -temperature 0.5 -gpu -1" % versions[version]
+            print(generate_path)
+            nn_output = subprocess.getoutput(generate_path)
             reg_ex = re.compile(r'M.+Z')
             path_strings = reg_ex.findall(nn_output) 
             for path in path_strings:
@@ -47,27 +49,25 @@ def generate(min_size=2, max_size = 500):
                 f.write(path + '\n')
                 forever = False
                 break
-    print("Finished generating..." + final_path)
-    threading.Timer(60 * 10, generate).start()
     return final_path
 
 
 @app.route('/generate')
-def new_path():
-    generate()
-    paths = get_all_paths()
-    response = jsonify({ 'paths': paths })
+@app.route('/generate/<version>')
+def new_path(version = 0):
+    path = generate(int(version))
+    response = jsonify({ 'path': path })
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
 @app.route('/')
 def index():
-    max_per_page = 6
+    max_per_page = 30
     paths = get_all_paths()
     response = jsonify({ 'paths': paths[0:max_per_page] })
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
 
 if __name__ == '__main__':
-    threading.Timer(60 * 10, generate).start()
     app.run(debug=True)
+    generate(repeat=True)
