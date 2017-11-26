@@ -6,9 +6,16 @@ import subprocess
 import threading
 
 from flask import Flask, jsonify
+from random import randint, uniform
 from svgpathtools import parse_path, Path
 
 app = Flask(__name__.split('.')[0]) # pylint: disable=invalid-name
+VERSIONS = [
+    'cv/paths_60000.t7',
+    'cv/paths1116_195000.t7',
+    'cv/paths1120_50000.t7',
+    'cv/paths_1125_26200.t7',
+]
 
 def get_all_paths():
     with open('shapes.txt', 'r') as f:
@@ -18,15 +25,23 @@ def get_all_paths():
 
 def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
     """ Returns an SVG path as a string """
-    versions = ['cv/paths_60000.t7', 'cv/paths1116_195000.t7', 'cv/paths1120_50000.t7', 'cv/paths_1124_33000.t7']
-    if repeat:
-        threading.Timer(60.0, generate).start()
+    if repeat: threading.Timer(60.0, generate).start()
+    length = randint(30, 300)
+    #sample = randint(0, 1)
+    sample = 1
+    temperature = ''
+    #if sample is 0: temperature = '-temperature %s' % uniform(0.1, 0.9)
+    #temperature = '-temperature %s' % uniform(0.1, 0.3)
+
     while True:
         final_path = None
-        while final_path is None:
+        sampling = False
+        while final_path is None and not sampling:
+            sampling = True
+            generate_path = "th sample.lua -checkpoint %s -length %s -start_text M -sample %s %s -gpu -1" % (VERSIONS[version], length, sample, temperature)
             print("Generating....")
-            generate_path = "th sample.lua -checkpoint %s -length 1000 -start_text M -sample 1 -temperature 0.5 -gpu -1" % versions[version]
             print(generate_path)
+            print("**********************************")
             nn_output = subprocess.getoutput(generate_path)
             reg_ex = re.compile(r'M.+Z')
             path_strings = reg_ex.findall(nn_output) 
@@ -42,6 +57,7 @@ def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
                     if width > min_size and width < max_size and height > min_size and height < max_size:
                         final_path = p.d()
                         break
+            sampling = False
 
         with open('shapes.txt', 'r+') as f:
             svgs = f.read().splitlines()
@@ -55,7 +71,10 @@ def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
 @app.route('/generate')
 @app.route('/generate/<version>')
 def new_path(version = 0):
-    path = generate(int(version))
+    version = int(version)
+    if version > len(VERSIONS):
+        version = len(VERSIONS) - 1
+    path = generate(version)
     response = jsonify({ 'path': path })
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
@@ -70,4 +89,4 @@ def index():
 
 if __name__ == '__main__':
     app.run(debug=True)
-    generate(repeat=True)
+    #generate(repeat=True)
