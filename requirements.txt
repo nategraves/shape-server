@@ -4,7 +4,10 @@ argparse
 h5py
 six
 flask
+flask-sqlalchemy
 flask-restful
+git+git://github.com/jfinkels/flask-restless@1.0.0b1
 svgwrite
 svgpathtools
 twisted
+marshmallow
