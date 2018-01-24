@@ -5,6 +5,7 @@ import re
 import subprocess
 import threading
 import json
+import uuid
 
 from datetime import datetime
 from flask import Flask, jsonify, request
@@ -17,6 +18,7 @@ from flask_restless import APIManager
 app = Flask(__name__) # pylint: disable=invalid-name
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///app.db'
 db = SQLAlchemy(app)
+PATH_MAX = 300
 
 VERSIONS = [
     'cv/paths_60000.t7',
@@ -25,9 +27,14 @@ VERSIONS = [
     'cv/paths_1125_26200.t7',
 ]
 
+class User(db.Model):
+    id = db.Column(db.String(255), primary_key=True)
+    names = db.relationship('Name', back_populates='name_user')
+    votes = db.relationship('Vote', back_populates='vote_user')
+
 class Path(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    d = db.Column(db.String(300), unique=True, nullable=False)
+    d = db.Column(db.Text, unique=True, nullable=False)
     created = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     names = db.relationship('Name', back_populates='path')
 
@@ -43,6 +50,8 @@ class Name(db.Model):
     created = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     path_id = db.Column(db.Integer, db.ForeignKey('path.id'))
     path = db.relationship('Path', back_populates='names')
+    user_id = db.Column(db.String(255), db.ForeignKey('user.id'))
+    name_user = db.relationship('User', back_populates='names')
     votes = db.relationship('Vote', back_populates='name')
 
     def as_dict(self):
@@ -56,6 +65,8 @@ class Vote(db.Model):
     created = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     name_id = db.Column(db.Integer, db.ForeignKey('name.id'))
     name = db.relationship('Name', back_populates='votes')
+    user_id = db.Column(db.String(255), db.ForeignKey('user.id'))
+    vote_user = db.relationship('User', back_populates='votes')
 
     def as_dict(self):
         return { col.name: getattr(self, col.name) for col in self.__table__.columns }
@@ -68,28 +79,14 @@ def add_cors(response):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     return response
 
-def get_all_paths():
-    with open('shapes.txt', 'r') as f:
-        paths = [line.rstrip() for line in f.readlines()]
-        paths = list(reversed(paths))
-        return paths
-
-def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
+def generate(version = 0, min_shape_size = 2, max_shape_size = 500, repeat=False, max_length=300):
     """ Returns an SVG path as a string """
-    if repeat: threading.Timer(60.0, generate).start()
-    length = randint(30, 300)
+
+    min_length = 30
+    length = randint(min_length, max_length)
 
     ####### Next character
     sample = 1
-    #temperature = 0
-
-    ####### Argmax !!! Doesn't work
-    #sample = 0
-    #temperature = uniform(0.1, 0.3)
-
-    ####### Random
-    #sample = randint(0, 1)
-    #temperature = uniform(0.1, 0.3) if sample == 0 else 0
 
     while True:
         final_path = None
@@ -106,21 +103,23 @@ def generate(version = 0, min_size = 2, max_size = 500, repeat=False):
                     xmin, xmax, ymin, ymax = p.bbox()
                     width = xmax - xmin
                     height = ymax - ymin
-                    if width > min_size and width < max_size and height > min_size and height < max_size:
+                    if width > min_shape_size and width < max_shape_size and height > min_shape_size and height < max_shape_size:
                         final_path = p.d()
                         break
             sampling = False
-
         path = Path(d=final_path)
         db.session.add(path)
         db.session.commit()
-        with open('shapes.txt', 'r+') as f:
-            svgs = f.read().splitlines()
-            if final_path not in svgs:
-                f.write(path + '\n')
-                forever = False
-                break
     return final_path
+
+@app.route('/user/new')
+def new_user():
+    id = uuid.uuid1()
+    print (id)
+    user = User(id=id)
+    response = jsonify({ 'id': id })
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 @app.route('/sample')
 def sample_path():
@@ -139,6 +138,10 @@ def new_path(version = 0):
     response = jsonify({ 'path': path })
     response.headers.add('Access-Control-Allow-Origin', '*')
     return response
+
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 if __name__ == '__main__':
     db.create_all()
